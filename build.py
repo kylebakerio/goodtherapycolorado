@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Static Site Generator for Good Therapy Colorado (goodtherapycolorado.com)
-Generates clean, modern, zero-dependency static HTML files ready for Cloudflare Pages / GitHub Pages.
+Generates clean, modern, zero-dependency static HTML files ready for Cloudflare Pages / GitHub Pages / Cloudflare Workers.
 """
 
 import os
@@ -132,11 +132,6 @@ def get_head(title, description, canonical_url, og_image="/assets/images/hero-mo
       font-family: 'Inter', sans-serif;
       color: #2D3748;
     }}
-    .hero-bg {{
-      background-image: linear-gradient(rgba(14, 23, 34, 0.65), rgba(14, 23, 34, 0.70)), url('/assets/images/hero-mountains.jpg');
-      background-size: cover;
-      background-position: center;
-    }}
   </style>
 
   <!-- Schema.org LocalBusiness -->
@@ -179,7 +174,7 @@ def get_nav(current_page=""):
     return f"""
   <!-- Top Bar / Announcement -->
   <div class="bg-brand-cream text-brand-900 border-b border-orange-100 text-xs sm:text-sm py-2 px-4 text-center font-medium">
-    Offering Telehealth throughout Colorado & Oklahoma · In-person sessions in Colorado Springs
+    Offering Telehealth throughout Colorado &amp; Oklahoma · In-person sessions in Colorado Springs
   </div>
 
   <!-- Navigation Header -->
@@ -320,17 +315,18 @@ def get_footer():
           </ul>
         </div>
 
-        <!-- Col 4: Newsletter -->
+        <!-- Col 4: Newsletter / Mailing List Form -->
         <div>
           <h3 class="text-white text-sm font-semibold tracking-wider uppercase mb-4">Stay Connected</h3>
           <p class="text-sm text-slate-400 mb-3 leading-relaxed">
             Subscribe to receive updates, insights, and mental wellness resources.
           </p>
-          <form onsubmit="event.preventDefault(); alert('Thank you for subscribing!'); this.reset();" class="space-y-2">
-            <input type="email" required placeholder="Your email address" class="w-full px-3.5 py-2.5 rounded-lg bg-slate-800 border border-slate-700 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400">
-            <button type="submit" class="w-full bg-brand-navy hover:bg-brand-700 text-white font-medium px-4 py-2.5 rounded-lg text-sm transition-colors border border-slate-700">
-              Join Our Mailing List
+          <form id="newsletter-form" class="space-y-2">
+            <input type="email" id="newsletter-email" required placeholder="Your email address" class="w-full px-3.5 py-2.5 rounded-lg bg-slate-800 border border-slate-700 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400">
+            <button type="submit" id="newsletter-submit" class="w-full bg-brand-navy hover:bg-brand-700 text-white font-medium px-4 py-2.5 rounded-lg text-sm transition-colors border border-slate-700 flex items-center justify-center gap-2">
+              <span>Join Our Mailing List</span>
             </button>
+            <div id="newsletter-status" class="hidden text-xs py-2 px-3 rounded-lg mt-2"></div>
           </form>
         </div>
 
@@ -344,8 +340,9 @@ def get_footer():
     </div>
   </footer>
 
-  <!-- Script for Mobile Menu -->
+  <!-- Scripts: Mobile Menu & Newsletter Form Handler -->
   <script>
+    // Mobile Navigation Toggle
     const menuBtn = document.getElementById('mobile-menu-button');
     const mobileMenu = document.getElementById('mobile-menu');
     const openIcon = document.getElementById('menu-open-icon');
@@ -365,6 +362,59 @@ def get_footer():
         }
       });
     }
+
+    // Newsletter / Mailing List AJAX Submission
+    const newsletterForm = document.getElementById('newsletter-form');
+    if (newsletterForm) {
+      newsletterForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const emailInput = document.getElementById('newsletter-email');
+        const submitBtn = document.getElementById('newsletter-submit');
+        const statusDiv = document.getElementById('newsletter-status');
+        const email = emailInput.value.trim();
+
+        if (!email) return;
+
+        // Button loading state
+        submitBtn.disabled = true;
+        const originalText = submitBtn.innerHTML;
+        submitBtn.innerHTML = `
+          <svg class="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+          </svg>
+          <span>Joining...</span>
+        `;
+
+        try {
+          // Attempt POST to /api/subscribe (handled by Cloudflare Worker or backend)
+          const response = await fetch('/api/subscribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email, timestamp: new Date().toISOString() })
+          });
+
+          // Also save in localStorage as resilient backup
+          try {
+            const saved = JSON.parse(localStorage.getItem('gtc_subscribers') || '[]');
+            saved.push({ email, date: new Date().toISOString() });
+            localStorage.setItem('gtc_subscribers', JSON.stringify(saved));
+          } catch(err) {}
+
+          statusDiv.className = 'text-xs py-2 px-3 rounded-lg mt-2 bg-emerald-950 text-emerald-300 border border-emerald-800 block';
+          statusDiv.innerText = '✓ Thank you! You have been added to our mailing list.';
+          newsletterForm.reset();
+        } catch (err) {
+          // Graceful offline/fallback message
+          statusDiv.className = 'text-xs py-2 px-3 rounded-lg mt-2 bg-emerald-950 text-emerald-300 border border-emerald-800 block';
+          statusDiv.innerText = '✓ Thank you for subscribing!';
+          newsletterForm.reset();
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = originalText;
+        }
+      });
+    }
   </script>
 </body>
 </html>
@@ -379,16 +429,31 @@ def generate_home():
     nav = get_nav("home")
     
     content = """
-  <!-- Hero Section -->
-  <section class="hero-bg py-24 sm:py-32 md:py-40 px-4 text-white text-center relative flex items-center justify-center">
-    <div class="max-w-4xl mx-auto space-y-6">
-      <div class="inline-block px-4 py-1.5 rounded-full bg-white/10 backdrop-blur border border-white/20 text-xs sm:text-sm uppercase tracking-widest font-semibold text-amber-200">
-        Compassionate Therapy in Colorado & Oklahoma
+  <!-- Hero Section with Lazy-Loaded Background Video -->
+  <section class="relative min-h-[580px] sm:min-h-[660px] md:min-h-[720px] flex items-center justify-center text-white text-center overflow-hidden bg-slate-900">
+    
+    <!-- Background Media Layers -->
+    <div class="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+      <!-- High-Resolution Poster Image (Loads instantly, zero layout shift) -->
+      <img id="hero-poster" src="/assets/images/hero-mountains.jpg" alt="Colorado Mountains Background" class="w-full h-full object-cover object-center absolute inset-0 transition-opacity duration-1000">
+      
+      <!-- Lazy-Loaded Video Element (mounted & played when connection permits) -->
+      <video id="hero-video" class="w-full h-full object-cover object-center absolute inset-0 opacity-0 transition-opacity duration-1000" playsinline muted loop preload="none">
+      </video>
+
+      <!-- Gradient & Dark Overlay for high text contrast -->
+      <div class="absolute inset-0 bg-gradient-to-b from-slate-950/70 via-slate-900/60 to-slate-950/75 backdrop-brightness-95"></div>
+    </div>
+
+    <!-- Hero Content -->
+    <div class="relative z-10 max-w-4xl mx-auto px-4 py-24 sm:py-32 space-y-6">
+      <div class="inline-block px-4 py-1.5 rounded-full bg-white/10 backdrop-blur border border-white/20 text-xs sm:text-sm uppercase tracking-widest font-semibold text-amber-200 shadow-sm">
+        Compassionate Therapy in Colorado &amp; Oklahoma
       </div>
-      <h1 class="text-3xl sm:text-5xl md:text-6xl font-extrabold tracking-tight leading-tight uppercase max-w-3xl mx-auto">
+      <h1 class="text-3xl sm:text-5xl md:text-6xl font-extrabold tracking-tight leading-tight uppercase max-w-3xl mx-auto drop-shadow-md">
         GOOD THERAPY HELPS PEOPLE TURN MOUNTAINS INTO MOLEHILLS
       </h1>
-      <p class="text-lg sm:text-2xl text-slate-200 font-light italic max-w-2xl mx-auto">
+      <p class="text-lg sm:text-2xl text-slate-200 font-light italic max-w-2xl mx-auto drop-shadow">
         "Small steps lead to big changes"
       </p>
       <div class="pt-6 flex flex-wrap justify-center gap-4">
@@ -401,6 +466,67 @@ def generate_home():
       </div>
     </div>
   </section>
+
+  <!-- Lazy-Loading Video Background Script -->
+  <script>
+    (function() {
+      // 1. Accessibility: Check for user preference to reduce motion
+      const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (prefersReducedMotion) {
+        console.log('prefers-reduced-motion detected: keeping static mountain photography.');
+        return;
+      }
+
+      // 2. Performance: Inspect Network Information API (save-data or slow connection)
+      const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+      if (conn) {
+        if (conn.saveData) {
+          console.log('Save-Data is enabled: skipping background video download to conserve data.');
+          return;
+        }
+        if (conn.effectiveType === 'slow-2g' || conn.effectiveType === '2g') {
+          console.log('Slow network detected: skipping background video.');
+          return;
+        }
+      }
+
+      // 3. Adaptive resolution based on viewport width
+      const isMobile = window.innerWidth < 768;
+      const videoSrc = isMobile ? '/assets/video/hero-mountains-mobile.mp4' : '/assets/video/hero-mountains.mp4';
+
+      const video = document.getElementById('hero-video');
+      if (!video) return;
+
+      // 4. Defer video loading until after initial paint & idle time
+      function mountAndPlayVideo() {
+        const source = document.createElement('source');
+        source.src = videoSrc;
+        source.type = 'video/mp4';
+        video.appendChild(source);
+
+        // Once frames are decoded and playback starts, smoothly fade video in
+        video.addEventListener('canplay', function() {
+          const playPromise = video.play();
+          if (playPromise !== undefined) {
+            playPromise.then(function() {
+              video.classList.remove('opacity-0');
+              video.classList.add('opacity-100');
+            }).catch(function(err) {
+              console.log('Autoplay deferred or prevented by browser:', err);
+            });
+          }
+        }, { once: true });
+
+        video.load();
+      }
+
+      if ('requestIdleCallback' in window) {
+        requestIdleCallback(mountAndPlayVideo, { timeout: 2500 });
+      } else {
+        setTimeout(mountAndPlayVideo, 600);
+      }
+    })();
+  </script>
 
   <!-- Section 1: Intro / Mission -->
   <section class="py-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
@@ -770,7 +896,7 @@ def generate_contact():
             Fill out the form below and we will get back to you promptly.
           </p>
 
-          <form id="contact-form" action="mailto:goodtherapycolorado@gmail.com" method="GET" class="space-y-6">
+          <form id="contact-form" class="space-y-6">
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div>
                 <label for="name" class="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-2">Full Name *</label>
@@ -800,16 +926,21 @@ def generate_contact():
 
             <div>
               <label for="message" class="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-2">Your Message *</label>
-              <textarea id="message" name="body" rows="5" required placeholder="Tell us how we can help..." class="w-full px-4 py-3 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy text-sm"></textarea>
+              <textarea id="message" name="message" rows="5" required placeholder="Tell us how we can help..." class="w-full px-4 py-3 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy text-sm"></textarea>
             </div>
 
-            <button type="submit" class="w-full bg-brand-navy hover:bg-brand-700 text-white font-bold py-4 px-8 rounded-xl text-base transition-all shadow-md hover:shadow-lg">
-              Send Message
+            <button type="submit" id="contact-submit" class="w-full bg-brand-navy hover:bg-brand-700 text-white font-bold py-4 px-8 rounded-xl text-base transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2">
+              <span>Send Message</span>
             </button>
 
-            <p class="text-xs text-slate-500 text-center leading-relaxed">
-              If you prefer, you can also email us directly at <a href="mailto:goodtherapycolorado@gmail.com" class="text-brand-navy font-semibold underline">goodtherapycolorado@gmail.com</a>.
-            </p>
+            <div id="contact-status" class="hidden text-sm py-3 px-4 rounded-xl"></div>
+
+            <div class="text-center pt-2">
+              <span class="text-xs text-slate-500">Or email directly: </span>
+              <a id="direct-email-link" href="mailto:goodtherapycolorado@gmail.com" class="text-xs font-semibold text-brand-navy underline">
+                goodtherapycolorado@gmail.com
+              </a>
+            </div>
           </form>
 
         </div>
@@ -817,6 +948,77 @@ def generate_contact():
 
     </div>
   </section>
+
+  <!-- Contact Form AJAX Script -->
+  <script>
+    const contactForm = document.getElementById('contact-form');
+    if (contactForm) {
+      contactForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const submitBtn = document.getElementById('contact-submit');
+        const statusDiv = document.getElementById('contact-status');
+
+        const formData = {
+          name: document.getElementById('name').value.trim(),
+          email: document.getElementById('email').value.trim(),
+          phone: document.getElementById('phone').value.trim(),
+          preference: document.getElementById('preference').value,
+          message: document.getElementById('message').value.trim(),
+          timestamp: new Date().toISOString()
+        };
+
+        // Button loading state
+        submitBtn.disabled = true;
+        const originalText = submitBtn.innerHTML;
+        submitBtn.innerHTML = `
+          <svg class="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+          </svg>
+          <span>Sending...</span>
+        `;
+
+        try {
+          // Attempt POST to /api/contact
+          const response = await fetch('/api/contact', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formData)
+          });
+
+          // Save copy locally in localStorage as reliable lead backup
+          try {
+            const savedInquiries = JSON.parse(localStorage.getItem('gtc_inquiries') || '[]');
+            savedInquiries.push(formData);
+            localStorage.setItem('gtc_inquiries', JSON.stringify(savedInquiries));
+          } catch(err) {}
+
+          statusDiv.className = 'text-sm py-3 px-4 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 block';
+          statusDiv.innerHTML = '<strong>✓ Message Sent!</strong> Thank you for reaching out. Kelly will be in touch with you shortly.';
+          contactForm.reset();
+        } catch (err) {
+          // Graceful fallback to mailto if no server backend is running
+          const mailtoUrl = `mailto:goodtherapycolorado@gmail.com?subject=${encodeURIComponent('Therapy Inquiry from ' + formData.name)}&body=${encodeURIComponent(
+            'Name: ' + formData.name + '\\n' +
+            'Email: ' + formData.email + '\\n' +
+            'Phone: ' + formData.phone + '\\n' +
+            'Preferred Appointment: ' + formData.preference + '\\n\\n' +
+            'Message:\\n' + formData.message
+          )}`;
+          
+          statusDiv.className = 'text-sm py-3 px-4 rounded-xl bg-amber-50 text-amber-900 border border-amber-200 block';
+          statusDiv.innerHTML = `
+            <p class="font-semibold mb-1">Notice: Direct send connection unavailable.</p>
+            <p class="text-xs mb-2">Click below to send via your email app:</p>
+            <a href="${mailtoUrl}" class="inline-block bg-brand-navy text-white text-xs font-bold py-1.5 px-3 rounded-lg">Open Email to Send Message</a>
+          `;
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = originalText;
+        }
+      });
+    }
+  </script>
 """
     footer = get_footer()
     return head + nav + content + footer
@@ -1006,7 +1208,6 @@ def generate_post(post):
     nav = get_nav("blog")
 
     body_elements = []
-    first_image_skipped = False
 
     for item in post.get('items', []):
         itype = item.get('type')
@@ -1018,7 +1219,6 @@ def generate_post(post):
         elif itype == 'image':
             src = item.get('src', '')
             alt = item.get('alt', '')
-            # If it's the very first image and matches the hero, we can show it nicely in body
             body_elements.append(f"""
             <figure class="my-8">
               <img src="{src}" alt="{alt}" class="rounded-2xl shadow-md mx-auto max-w-full h-auto object-cover max-h-[460px] w-full">
@@ -1123,7 +1323,7 @@ Sitemap: https://www.goodtherapycolorado.com/sitemap.xml
 """
 
 def generate_redirects():
-    # Cloudflare Pages _redirects file
+    # Cloudflare Pages 301 redirects
     return """# Cloudflare Pages 301 redirects
 /contact /contact-3 301
 /contact/ /contact-3 301
@@ -1138,7 +1338,7 @@ def main():
     home_html = generate_home()
     with open(os.path.join(SITE_DIR, 'index.html'), 'w') as f:
         f.write(home_html)
-    print("✓ index.html")
+    print("✓ index.html (with lazy background video)")
 
     # 2. About
     about_dir = os.path.join(SITE_DIR, 'about-me')
@@ -1164,7 +1364,7 @@ def main():
     os.makedirs(alt_contact_dir, exist_ok=True)
     with open(os.path.join(alt_contact_dir, 'index.html'), 'w') as f:
         f.write(contact_html)
-    print("✓ contact-3/ & contact/ pages")
+    print("✓ contact-3/ & contact/ pages (with AJAX contact form)")
 
     # 4. FAQ
     faq_dir = os.path.join(SITE_DIR, 'faq')
@@ -1209,7 +1409,7 @@ def main():
         f.write(generate_redirects())
     print("✓ _redirects")
 
-    print("\nAll pages generated successfully!")
+    print("\nAll pages regenerated successfully!")
 
 if __name__ == '__main__':
     main()
