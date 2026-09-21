@@ -1,0 +1,10 @@
+# Raw high-resolution camera originals (already web-optimized in assets/images/)
+assets/originals/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# System files
+.DS_Store
+Thumbs.db

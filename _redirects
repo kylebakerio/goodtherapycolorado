@@ -1,0 +1,5 @@
+# Cloudflare Pages 301 redirects
+/contact /contact-3 301
+/contact/ /contact-3 301
+/about /about-me 301
+/about/ /about-me 301
