@@ -438,7 +438,7 @@ def generate_home():
       <img id="hero-poster" src="/assets/images/hero-mountains.jpg" alt="Colorado Mountains Background" class="w-full h-full object-cover object-center absolute inset-0 transition-opacity duration-1000">
       
       <!-- Lazy-Loaded Video Element (mounted & played when connection permits) -->
-      <video id="hero-video" class="w-full h-full object-cover object-center absolute inset-0 opacity-0 transition-opacity duration-1000" playsinline muted loop preload="none">
+      <video id="hero-video" class="w-full h-full object-cover object-center absolute inset-0 opacity-0 transition-opacity duration-1000" autoplay muted loop playsinline preload="auto">
       </video>
 
       <!-- Gradient & Dark Overlay for high text contrast -->
@@ -497,33 +497,30 @@ def generate_home():
       const video = document.getElementById('hero-video');
       if (!video) return;
 
+      function revealVideo() {
+        video.classList.remove('opacity-0');
+        video.classList.add('opacity-100');
+      }
+
       // 4. Defer video loading until after initial paint & idle time
       function mountAndPlayVideo() {
-        const source = document.createElement('source');
-        source.src = videoSrc;
-        source.type = 'video/mp4';
-        video.appendChild(source);
-
-        // Once frames are decoded and playback starts, smoothly fade video in
+        video.addEventListener('playing', revealVideo, { once: true });
         video.addEventListener('canplay', function() {
-          const playPromise = video.play();
-          if (playPromise !== undefined) {
-            playPromise.then(function() {
-              video.classList.remove('opacity-0');
-              video.classList.add('opacity-100');
-            }).catch(function(err) {
-              console.log('Autoplay deferred or prevented by browser:', err);
-            });
-          }
+          video.play().then(revealVideo).catch(function(err) {
+            console.log('Autoplay handled:', err);
+          });
         }, { once: true });
 
+        // Set source and start playback
+        video.src = videoSrc;
         video.load();
+        video.play().then(revealVideo).catch(function() {});
       }
 
       if ('requestIdleCallback' in window) {
         requestIdleCallback(mountAndPlayVideo, { timeout: 2500 });
       } else {
-        setTimeout(mountAndPlayVideo, 600);
+        setTimeout(mountAndPlayVideo, 400);
       }
     })();
   </script>
